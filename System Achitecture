@@ -1,0 +1,27 @@
+System Architecture 
+
+Social Media APIs
+        │
+        ▼
+Data Collection Module
+        │
+        ▼
+Text Preprocessing
+        │
+        ▼
+NLP Engine
+        │
+        ▼
+Threat Detection Model
+        │
+        ▼
+Classification Engine
+        │
+        ▼
+Database
+        │
+        ▼
+Dashboard
+        │
+        ▼
+Alert System
