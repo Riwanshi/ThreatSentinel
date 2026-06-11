@@ -1,5 +1,7 @@
 # ThreatSentinel
 AI-powered social media threat monitor that collects public posts and metadata, detects cyber threats (phishing, disinformation, impersonation, doxxing) using NLP and behavior analytics, prioritizes incidents by risk score, and alerts stakeholders with evidence and remediation guidance. Cloud-native, modular, and privacy-aware.
+
+
 Main Features
 User Management
 User Registration
@@ -8,6 +10,8 @@ Role-Based Access Control
 Admin
 Analyst
 User
+
+
 Social Media Data Collection
 Connect Social Media APIs
 Fetch Posts/Comments
@@ -19,6 +23,8 @@ Examples:
 Twitter/X API
 Reddit API
 Facebook Graph API (if available)
+
+
 NLP Text Processing
 Preprocessing
 Remove URLs
@@ -38,8 +44,8 @@ Processed:
 
 destroy
 
-Threat Detection Module
 
+Threat Detection Module
 Detect:
 
 Cyberbullying
@@ -60,6 +66,8 @@ Examples:
 
 I will kill you
 Bomb threat messages
+
+
 AI Classification
 
 Output Categories:
@@ -68,6 +76,8 @@ Threat Score	Category
 0-40%	Safe
 41-70%	Warning
 71-100%	Dangerous
+
+
 Alert System
 
 When Dangerous content is found:
@@ -76,8 +86,9 @@ Email Alert
 Dashboard Notification
 SMS Alert (Optional)
 Push Notification
-Dashboard
 
+
+Dashboard
 Display:
 
 Total Posts Analyzed
@@ -86,8 +97,9 @@ Dangerous Posts
 Recent Alerts
 User Activity Logs
 Graphs and Charts
-Reports
 
+
+Reports
 Generate:
 
 Daily Reports
@@ -98,8 +110,9 @@ Export:
 
 PDF
 Excel
-Activity Logs
 
+
+Activity Logs
 Store:
 
 Login History
