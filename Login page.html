@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ThreatPulse — AI Social Media Threat Monitor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --safe:    #00e5a0;
+    --warn:    #f5c542;
+    --danger:  #ff3b5c;
+    --panel:   #0d1117;
+    --surface: #161b22;
+    --border:  #21262d;
+    --muted:   #8b949e;
+    --text:    #e6edf3;
+    --accent:  #58a6ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Space Grotesk', sans-serif; background: var(--panel); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--panel); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Scanline overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 3px);
+  }
+
+  /* ── Views ── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── Login ── */
+  #login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 50%, rgba(88,166,255,0.07) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(255,59,92,0.06) 0%, transparent 50%), var(--panel); }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 100%; max-width: 440px; position: relative; overflow: hidden; }
+  .login-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .logo-mark { width: 48px; height: 48px; background: linear-gradient(135deg, var(--accent), var(--danger)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+  .field-group label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .field-group input, .field-group select { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; transition: border-color .2s; }
+  .field-group input:focus, .field-group select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88,166,255,0.12); }
+  .role-pills { display: flex; gap: 8px; }
+  .role-pill { flex: 1; padding: 8px 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; cursor: pointer; transition: all .2s; }
+  .role-pill.selected { border-color: var(--accent); background: rgba(88,166,255,0.1); color: var(--accent); }
+  .btn-primary { width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent), #3a8bd4); border: none; border-radius: 8px; color: #fff; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .2s, transform .1s; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:active { transform: scale(0.98); }
+  .mfa-box { display: none; }
+  .mfa-digits { display: flex; gap: 8px; justify-content: center; }
+  .mfa-digit { width: 44px; height: 52px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; text-align: center; font-size: 20px; font-family: 'JetBrains Mono', monospace; color: var(--text); outline: none; }
+  .mfa-digit:focus { border-color: var(--accent); }
+
+  /* ── App Shell ── */
+  #app-view { min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { position: sticky; top: 0; z-index: 100; background: rgba(13,17,23,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-logo { display: flex; align-items: center; gap: 10px; }
+  .topbar-logo span { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--safe); animation: pulse-ring 2s infinite; }
+  @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(0,229,160,0.5); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .nav-tabs { display: flex; gap: 4px; }
+  .nav-tab { padding: 6px 14px; border-radius: 6px; background: transparent; border: none; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s; }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .nav-tab.active { color: var(--accent); background: rgba(88,166,255,0.1); }
+  .user-pill { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 13px; cursor: pointer; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--danger)); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .main-content { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+  /* ── Panels ── */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .panel-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .panel-body { padding: 20px; }
+
+  /* ── Stat Cards ── */
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: relative; overflow: hidden; }
+  .stat-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; }
+  .stat-card.safe::after { background: var(--safe); }
+  .stat-card.warn::after { background: var(--warn); }
+  .stat-card.danger::after { background: var(--danger); }
+  .stat-card.info::after { background: var(--accent); }
+  .stat-value { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat-delta { font-size: 12px; margin-top: 8px; font-weight: 600; }
+  .delta-up { color: var(--danger); }
+  .delta-down { color: var(--safe); }
+
+  /* ── Badges ── */
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .badge-safe    { background: rgba(0,229,160,0.12);  color: var(--safe);   border: 1px solid rgba(0,229,160,0.25); }
+  .badge-warn    { background: rgba(245,197,66,0.12); color: var(--warn);   border: 1px solid rgba(245,197,66,0.25); }
+  .badge-danger  { background: rgba(255,59,92,0.12);  color: var(--danger); border: 1px solid rgba(255,59,92,0.25); }
+  .badge-info    { background: rgba(88,166,255,0.12); color: var(--accent); border: 1px solid rgba(88,166,255,0.25); }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── Feed ── */
+  .feed-item { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; animation: slideIn .3s ease; position: relative; transition: border-color .2s; }
+  .feed-item:hover { border-color: rgba(88,166,255,0.3); }
+  .feed-item.safe   { border-left: 3px solid var(--safe); }
+  .feed-item.warn   { border-left: 3px solid var(--warn); }
+  .feed-item.danger { border-left: 3px solid var(--danger); }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .feed-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .platform-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; }
+  .pt-twitter { background: rgba(29,161,242,0.15); color: #1da1f2; }
+  .pt-reddit  { background: rgba(255,69,0,0.15);   color: #ff4500; }
+  .pt-facebook { background: rgba(66,103,178,0.15);color: #4267b2; }
+  .feed-text { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
+  .feed-analysis { background: var(--panel); border-radius: 6px; padding: 10px 12px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+  .analysis-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .analysis-row:last-child { margin-bottom: 0; }
+  .analysis-key { color: var(--muted); }
+  .analysis-val { font-weight: 600; }
+  .confidence-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; max-width: 80px; }
+  .confidence-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+  .confidence-fill.danger { background: var(--danger); }
+  .confidence-fill.warn { background: var(--warn); }
+  .confidence-fill.safe { background: var(--safe); }
+
+  /* ── Log Table ── */
+  .log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .log-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .log-table td { padding: 12px 14px; border-bottom: 1px solid rgba(33,38,45,0.6); vertical-align: middle; }
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono-small { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  /* ── Analyze Form ── */
+  .analyze-textarea { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; color: var(--text); font-family: inherit; font-size: 14px; line-height: 1.7; resize: vertical; min-height: 120px; outline: none; transition: border-color .2s; }
+  .analyze-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88,166,255,0.08); }
+  .btn-analyze { padding: 11px 28px; background: linear-gradient(135deg, var(--accent), #3a8bd4); border: none; border-radius: 8px; color: #fff; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .2s, transform .1s; }
+  .btn-analyze:hover { opacity: 0.9; }
+  .btn-analyze:active { transform: scale(0.97); }
+  .btn-secondary { padding: 10px 20px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s; }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Result Card ── */
+  .result-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; animation: slideIn .3s ease; }
+  .gauge-wrap { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+  .gauge-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+  .token-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .token { padding: 3px 9px; border-radius: 5px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+  .token-flagged { background: rgba(255,59,92,0.15); color: var(--danger); border: 1px solid rgba(255,59,92,0.2); }
+  .token-neutral { background: rgba(139,148,158,0.1); color: var(--muted); }
+
+  /* ── Charts ── */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── Processing Steps ── */
+  .step-list { display: flex; flex-direction: column; gap: 6px; }
+  .step-item { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 8px 12px; border-radius: 7px; background: var(--panel); }
+  .step-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .step-icon.done  { background: rgba(0,229,160,0.2);  color: var(--safe); }
+  .step-icon.spin  { background: rgba(88,166,255,0.2); color: var(--accent); animation: spin 1s linear infinite; }
+  .step-icon.wait  { background: rgba(139,148,158,0.1); color: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Misc ── */
+  .section-tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; transition: all .2s; }
+  .section-tab.active, .section-tab:hover { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.08); }
+  .alert-banner { padding: 10px 16px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+  .alert-danger { background: rgba(255,59,92,0.1); border: 1px solid rgba(255,59,92,0.25); color: #ff8097; }
+  .alert-warn   { background: rgba(245,197,66,0.1); border: 1px solid rgba(245,197,66,0.25); color: #f5c542; }
+  .alert-safe   { background: rgba(0,229,160,0.1);  border: 1px solid rgba(0,229,160,0.25);  color: var(--safe); }
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); font-size: 14px; }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid-4 { grid-template-columns: repeat(2,1fr); } .grid-3 { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) { .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } .nav-tabs { display: none; } .main-content { padding: 12px; } }
+  .topbar-mobile-menu { display: none; background: none; border: none; color: var(--text); font-size: 20px; cursor: pointer; }
+  @media (max-width: 640px) { .topbar-mobile-menu { display: block; } }
+  .mobile-nav { display: none; position: fixed; inset: 0; background: rgba(13,17,23,0.97); z-index: 200; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  .mobile-nav.open { display: flex; }
+  .mobile-nav .nav-tab { font-size: 18px; padding: 12px 32px; }
+  .tag-mini { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(88,166,255,0.12); color: var(--accent); font-weight: 700; margin-left: 6px; vertical-align: middle; }
+  .live-ticker { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--safe); padding: 2px 8px; border: 1px solid rgba(0,229,160,0.2); border-radius: 4px; background: rgba(0,229,160,0.06); animation: blink 2s ease infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .scrollable-feed { max-height: 520px; overflow-y: auto; padding-right: 4px; }
+  .threat-score { font-size: 48px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .keyword-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kw { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-family: 'JetBrains Mono', monospace; cursor: default; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ LOGIN VIEW ═══════════════════ -->
+<div id="login-view" class="view active">
+  <div class="login-card">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:28px;">
+      <div class="logo-mark">🛡</div>
+      <div>
+        <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em;">ThreatPulse</div>
+        <div style="font-size:12px; color:var(--muted);">AI Threat Intelligence Platform</div>
+      </div>
+    </div>
+
+    <!-- Role Selection -->
+    <div id="step-login">
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px;">Access Role</div>
+        <div class="role-pills">
+          <div class="role-pill selected" onclick="selectRole(this,'Admin')">🔑 Admin</div>
+          <div class="role-pill" onclick="selectRole(this,'Analyst')">🔬 Analyst</div>
+          <div class="role-pill" onclick="selectRole(this,'Viewer')">👁 Viewer</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div class="field-group">
+          <label>Username / Email</label>
+          <input type="text" id="login-user" placeholder="admin@threatpulse.io" value="admin@threatpulse.io"/>
+        </div>
+        <div class="field-group">
+          <label>Password</label>
+          <input type="password" id="login-pass" placeholder="••••••••" value="••••••••"/>
+        </div>
+      </div>
+      <div style="margin-top:6px; margin-bottom:20px; display:flex; justify-content:flex-end;">
+        <span style="font-size:12px; color:var(--accent); cursor:pointer;">Forgot password?</span>
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Continue to MFA →</button>
+      <div style="margin-top:16px; text-align:center; font-size:12px; color:var(--muted);">Demo credentials pre-filled · Any password works</div>
+    </div>
+
+    <!-- MFA Step -->
+    <div id="step-mfa" class="mfa-box" style="display:none;">
+      <div style="text-align:center; margin-bottom:24px;">
+        <div style="font-size:32px; margin-bottom:10px;">📱</div>
+        <div style="font-size:15px; font-weight:600; margin-bottom:6px;">Two-Factor Authentication</div>
+        <div style="font-size:13px; color:var(--muted);">Enter the 6-digit code sent to your authenticator app.<br/>Demo: use <code style="color:var(--accent);">123456</code></div>
+      </div>
+      <div class="mfa-digits" id="mfa-digits">
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,0)" id="mfa0"/>
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,1)" id="mfa1"/>
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,2)" id="mfa2"/>
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,3)" id="mfa3"/>
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,4)" id="mfa4"/>
+        <input class="mfa-digit" maxlength="1" oninput="mfaNext(this,5)" id="mfa5"/>
+      </div>
+      <div id="mfa-error" style="display:none; text-align:center; margin-top:10px; font-size:13px; color:var(--danger);">❌ Invalid code. Try 123456</div>
+      <button class="btn-primary" style="margin-top:20px;" onclick="verifyMFA()">Verify & Sign In</button>
+      <div style="text-align:center; margin-top:12px;">
+        <span style="font-size:12px; color:var(--accent); cursor:pointer;" onclick="document.getElementById('step-mfa').style.display='none'; document.getElementById('step-login').style.display='block';">← Back to login</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ APP VIEW ═══════════════════ -->
+<div id="app-view" class="view">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-mark" style="width:32px; height:32px; border-radius:8px; font-size:16px;">🛡</div>
+      <span>ThreatPulse</span>
+      <div class="pulse-dot" style="margin-left:4px;"></div>
+    </div>
+    <nav class="nav-tabs" id="main-nav">
+      <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+      <button class="nav-tab" onclick="switchTab('monitor')">Live Monitor</button>
+      <button class="nav-tab" onclick="switchTab('analyze')">Analyze</button>
+      <button class="nav-tab" onclick="switchTab('reports')">Reports</button>
+    </nav>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="live-ticker">● LIVE</div>
+      <div class="user-pill" onclick="showUserMenu()">
+        <div class="avatar" id="user-avatar">A</div>
+        <span id="user-name-label" style="font-size:13px; font-weight:500;">Admin</span>
+        <span style="color:var(--muted); font-size:12px;">▾</span>
+      </div>
+      <button class="topbar-mobile-menu" onclick="toggleMobileNav()">☰</button>
+    </div>
+  </div>
+
+  <!-- Mobile Nav -->
+  <div class="mobile-nav" id="mobile-nav">
+    <button class="nav-tab" onclick="switchTab('dashboard'); toggleMobileNav()">Dashboard</button>
+    <button class="nav-tab" onclick="switchTab('monitor'); toggleMobileNav()">Live Monitor</button>
+    <button class="nav-tab" onclick="switchTab('analyze'); toggleMobileNav()">Analyze</button>
+    <button class="nav-tab" onclick="switchTab('reports'); toggleMobileNav()">Reports</button>
+    <button class="btn-secondary" onclick="logout(); toggleMobileNav()">Sign Out</button>
+  </div>
+
+  <div class="main-content">
+
+    <!-- ── DASHBOARD TAB ── -->
+    <div id="tab-dashboard" class="tab-content">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h1 style="font-size:22px; font-weight:700; letter-spacing:-0.02em;">Threat Intelligence Dashboard</h1>
+          <div style="font-size:13px; color:var(--muted); margin-top:2px;">Real-time AI-powered social media threat analysis</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="tag-mini">v2.4.1</span>
+          <button class="btn-secondary" onclick="refreshDashboard()" style="font-size:12px; padding:6px 14px;">↻ Refresh</button>
+          <button class="btn-secondary" onclick="switchTab('monitor')" style="font-size:12px; padding:6px 14px; color:var(--safe); border-color:rgba(0,229,160,.3);">● Monitor Live</button>
+        </div>
+      </div>
+
+      <!-- Alert Banners -->
+      <div id="alert-area" style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;"></div>
+
+      <!-- Stat Cards -->
+      <div class="grid-4" style="margin-bottom:20px;">
+        <div class="stat-card info">
+          <div style="font-size:20px; margin-bottom:4px;">📡</div>
+          <div class="stat-value" id="stat-scanned">0</div>
+          <div class="stat-label">Posts Scanned Today</div>
+          <div class="stat-delta delta-up" id="stat-scanned-delta">↑ +0 / min</div>
+        </div>
+        <div class="stat-card danger">
+          <div style="font-size:20px; margin-bottom:4px;">🚨</div>
+          <div class="stat-value" id="stat-threats" style="color:var(--danger);">0</div>
+          <div class="stat-label">Active Threats</div>
+          <div class="stat-delta delta-up" id="stat-threats-delta">↑ 0 new</div>
+        </div>
+        <div class="stat-card warn">
+          <div style="font-size:20px; margin-bottom:4px;">⚠️</div>
+          <div class="stat-value" id="stat-warnings" style="color:var(--warn);">0</div>
+          <div class="stat-label">Warnings</div>
+          <div class="stat-delta" id="stat-warn-delta" style="color:var(--warn);">↑ 0 new</div>
+        </div>
+        <div class="stat-card safe">
+          <div style="font-size:20px; margin-bottom:4px;">✅</div>
+          <div class="stat-value" id="stat-safe-count" style="color:var(--safe);">0</div>
+          <div class="stat-label">Safe Posts</div>
+          <div class="stat-delta delta-down" id="stat-safe-delta">↓ 0%</div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="grid-2" style="margin-bottom:20px;">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">📊 Threat Volume (24h)</div>
+            <span style="font-size:12px; color:var(--muted);">Hourly</span>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="volumeChart"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">🎯 Classification Breakdown</div>
+            <span style="font-size:12px; color:var(--muted);">Today</span>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap"><canvas id="donutChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Platform Stats + Recent Threats -->
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">🌐 Platform Breakdown</div>
+          </div>
+          <div class="panel-body" id="platform-breakdown"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">🔥 Top Threat Keywords</div>
+          </div>
+          <div class="panel-body">
+            <div class="keyword-cloud" id="keyword-cloud"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MONITOR TAB ── -->
+    <div id="tab-monitor" class="tab-content" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h1 style="font-size:22px; font-weight:700; letter-spacing:-0.02em;">Real-Time Threat Monitor</h1>
+          <div style="font-size:13px; color:var(--muted); margin-top:2px;">AI/NLP classification pipeline · <span id="feed-count">0</span> items analyzed</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="section-tab active" id="filter-all" onclick="setFeedFilter('all')">All</button>
+          <button class="section-tab" id="filter-danger" onclick="setFeedFilter('danger')">🔴 Danger</button>
+          <button class="section-tab" id="filter-warn" onclick="setFeedFilter('warn')">🟡 Warning</button>
+          <button class="section-tab" id="filter-safe" onclick="setFeedFilter('safe')">🟢 Safe</button>
+          <button id="monitor-toggle" class="btn-analyze" style="font-size:12px; padding:8px 16px;" onclick="toggleMonitor()">⏸ Pause Feed</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px;">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">⚙️ NLP Pipeline Status</div>
+            <div class="live-ticker" id="pipeline-status">● ACTIVE</div>
+          </div>
+          <div class="panel-body">
+            <div class="step-list" id="pipeline-steps"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">📈 Live Threat Rate</div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-wrap" style="height:160px;"><canvas id="liveChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">📡 Incoming Post Stream <span class="live-ticker" style="margin-left:8px;">● LIVE</span></div>
+          <span style="font-size:12px; color:var(--muted);" id="last-update-time">Updated just now</span>
+        </div>
+        <div class="panel-body" style="padding:16px;">
+          <div class="scrollable-feed" id="live-feed"></div>
+          <div class="empty-state" id="feed-empty" style="display:none;">
+            <div class="icon">📡</div>
+            No posts match this filter.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ANALYZE TAB ── -->
+    <div id="tab-analyze" class="tab-content" style="display:none;">
+      <div style="margin-bottom:20px;">
+        <h1 style="font-size:22px; font-weight:700; letter-spacing:-0.02em;">Manual Threat Analyzer</h1>
+        <div style="font-size:13px; color:var(--muted); margin-top:2px;">Paste or type any social media text to run instant AI threat classification</div>
+      </div>
+
+      <div class="grid-2" style="gap:20px;">
+        <div>
+          <div class="panel" style="margin-bottom:16px;">
+            <div class="panel-header">
+              <div class="panel-title">✏️ Input Text</div>
+            </div>
+            <div class="panel-body">
+              <div class="field-group" style="margin-bottom:12px;">
+                <label>Platform Source</label>
+                <select id="analyze-platform" style="background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:9px 14px; color:var(--text); font-family:inherit; font-size:14px; outline:none;">
+                  <option>Twitter/X</option>
+                  <option>Reddit</option>
+                  <option>Facebook</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <textarea id="analyze-input" class="analyze-textarea" placeholder="Paste social media text here…&#10;&#10;e.g. 'We must rise up and attack them at dawn. The enemy is among us. They will pay dearly.'"></textarea>
+              <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                <button class="btn-analyze" onclick="analyzeText()">⚡ Analyze Now</button>
+                <button class="btn-secondary" onclick="loadSample('danger')">Load Danger Sample</button>
+                <button class="btn-secondary" onclick="loadSample('warn')">Load Warn Sample</button>
+                <button class="btn-secondary" onclick="loadSample('safe')">Load Safe Sample</button>
+                <button class="btn-secondary" onclick="clearAnalyze()">Clear</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Processing Steps -->
+          <div class="panel" id="analyze-pipeline-panel" style="display:none;">
+            <div class="panel-header">
+              <div class="panel-title">🧠 NLP Pipeline</div>
+            </div>
+            <div class="panel-body">
+              <div class="step-list" id="analyze-steps"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div id="analyze-result-area">
+            <div class="empty-state">
+              <div class="icon">🧠</div>
+              Enter text and click Analyze to run AI classification.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="panel" style="margin-top:20px;">
+        <div class="panel-header">
+          <div class="panel-title">📋 Analysis History</div>
+          <button class="btn-secondary" style="font-size:12px; padding:5px 12px;" onclick="clearHistory()">Clear</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="log-table" id="analyze-history-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Platform</th>
+                <th>Text Preview</th>
+                <th>Verdict</th>
+                <th>Confidence</th>
+                <th>Category</th>
+              </tr>
+            </thead>
+            <tbody id="analyze-history-body">
+              <tr><td colspan="6"><div class="empty-state" style="padding:24px;">No analyses yet.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── REPORTS TAB ── -->
+    <div id="tab-reports" class="tab-content" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h1 style="font-size:22px; font-weight:700; letter-spacing:-0.02em;">Reports & Audit Logs</h1>
+          <div style="font-size:13px; color:var(--muted); margin-top:2px;">MIS threat detection reports and system audit trail</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="exportPDF()">📄 Export PDF</button>
+          <button class="btn-secondary" onclick="exportCSV()">📊 Export CSV</button>
+          <button class="btn-analyze" onclick="generateReport()" style="font-size:13px; padding:9px 18px;">+ Generate Report</button>
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="grid-3" style="margin-bottom:20px;" id="report-summary-cards"></div>
+
+      <!-- Section Tabs -->
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="section-tab active" id="rtab-threats" onclick="showReportTab('threats')">Threat Log</button>
+        <button class="section-tab" id="rtab-audit" onclick="showReportTab('audit')">Audit Log</button>
+        <button class="section-tab" id="rtab-summary" onclick="showReportTab('summary')">Session Summary</button>
+      </div>
+
+      <!-- Threat Log -->
+      <div id="rtab-threats-content" class="panel">
+        <div class="panel-header">
+          <div class="panel-title">🚨 Threat Detection Report</div>
+          <span class="mono-small" id="report-generated-time">Generated: —</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="log-table" id="threat-report-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Timestamp</th>
+                <th>Platform</th>
+                <th>Content Preview</th>
+                <th>Category</th>
+                <th>Level</th>
+                <th>Confidence</th>
+                <th>Analyst</th>
+              </tr>
+            </thead>
+            <tbody id="threat-report-body">
+              <tr><td colspan="8"><div class="empty-state" style="padding:24px;">Generate a report to populate data.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Audit Log -->
+      <div id="rtab-audit-content" class="panel" style="display:none;">
+        <div class="panel-header">
+          <div class="panel-title">🔍 System Audit Log</div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="log-table" id="audit-log-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Event</th>
+                <th>User</th>
+                <th>IP Address</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="audit-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Session Summary -->
+      <div id="rtab-summary-content" style="display:none;">
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">📊 Session Summary Report</div></div>
+          <div class="panel-body" id="session-summary-content"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /app-view -->
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE & DATA
+// ═══════════════════════════════════════════════════
+const APP = {
+  role: 'Admin',
+  user: 'admin@threatpulse.io',
+  feedItems: [],
+  analysisHistory: [],
+  auditLog: [],
+  threatLog: [],
+  stats: { scanned: 0, threats: 0, warnings: 0, safe: 0 },
+  monitorRunning: true,
+  monitorTimer: null,
+  feedFilter: 'all',
+  liveChartData: [],
+  chartRefs: {},
+};
+
+const THREAT_KEYWORDS = {
+  violence:    ['attack','kill','murder','bomb','shoot','destroy','massacre','explode','stab','execute','assault','slaughter'],
+  hate:        ['hate','racist','scum','filth','vermin','inferior','exterminate','disgusting','degenerate'],
+  terror:      ['jihad','terrorist','isis','extremist','martyrdom','infidel','caliphate','radicalize'],
+  drugs:       ['cocaine','heroin','meth','fentanyl','overdose','dealer','trafficking','cartel'],
+  cybercrime:  ['hack','breach','phishing','ddos','malware','ransomware','exploit','inject','darkweb'],
+  fraud:       ['scam','fraud','steal','launder','counterfeit','fake','cheat'],
+  selfharm:    ['suicide','selfharm','end it all','want to die','kill myself'],
+};
+
+const WARN_KEYWORDS = ['angry','fight','protest','outrage','demand','expose','confront','resist','uprising','rebellion','clash'];
+const SAFE_KEYWORDS  = ['love','great','happy','beautiful','amazing','wonderful','excellent','support','hope','peace','enjoy'];
+
+const SAMPLE_POSTS = [
+  { text: "BREAKING: We must attack the government building tonight. Share coordinates via encrypted channel. The revolution starts at midnight. #Uprising", platform: 'Twitter/X', level: 'danger', cat: 'Violence/Terror' },
+  { text: "Just discovered a critical SQLi vulnerability in the banking portal. Running exploit now. All accounts compromised. Dumping the database.", platform: 'Reddit', level: 'danger', cat: 'Cybercrime' },
+  { text: "The racist scum at city hall need to be exterminated like vermin. I hate every single one of them. They deserve what's coming.", platform: 'Twitter/X', level: 'danger', cat: 'Hate Speech' },
+  { text: "Anyone need top quality fentanyl? Best dealer in the metro area. Direct message. Discreet shipping guaranteed.", platform: 'Reddit', level: 'danger', cat: 'Drug Trafficking' },
+  { text: "I'm so angry about the policy changes. We need to confront the administration and demand answers. This is outrageous.", platform: 'Twitter/X', level: 'warn', cat: 'Social Unrest' },
+  { text: "The protest at noon could easily turn into a clash. People are furious and ready to fight back against the system.", platform: 'Reddit', level: 'warn', cat: 'Civil Unrest' },
+  { text: "Exposing the fraudulent scheme by these executives. They've been stealing money for years. Time to resist and take action.", platform: 'Facebook', level: 'warn', cat: 'Fraud Allegation' },
+  { text: "The uprising in our community is growing. People are angry and resisting the unjust policies. Change must come.", platform: 'Twitter/X', level: 'warn', cat: 'Social Unrest' },
+  { text: "Just had an amazing brunch with friends! The avocado toast was absolutely wonderful. Life is beautiful. #Grateful", platform: 'Twitter/X', level: 'safe', cat: 'General' },
+  { text: "Our community garden is thriving! So much love and support from everyone. Come join us this weekend for the harvest festival!", platform: 'Facebook', level: 'safe', cat: 'Community' },
+  { text: "New study shows renewable energy at record highs globally. Great news for the environment and future generations. Hope for tomorrow!", platform: 'Reddit', level: 'safe', cat: 'News' },
+  { text: "Watching the sunset from the rooftop. The sky is painted in gorgeous oranges and pinks. Nature is simply amazing. 🌅", platform: 'Twitter/X', level: 'safe', cat: 'Personal' },
+  { text: "Team just shipped our biggest product update ever! Everyone worked so hard. So proud of this incredible group. Excellent work all around!", platform: 'Reddit', level: 'safe', cat: 'Work' },
+];
+
+const USERNAMES = ['@shadowhunter99','@civic_analyst','@watchdog_AI','@anon_observer','@net_patrol','@realuser2024','@community_watch','@cyber_sleuth','@data_reporter','@alert_monitor','@freedom_voice','@truth_seeker'];
+
+const AUDIT_EVENTS = [
+  'User login successful','Failed login attempt','Report generated','Alert triggered','Feed filter changed','Post analyzed','Dashboard viewed','Export requested','Monitor paused','Monitor resumed','Settings updated','User role changed',
+];
+
+// ═══════════════════════════════════════════════════
+//  LOGIN
+// ═══════════════════════════════════════════════════
+let selectedRole = 'Admin';
+function selectRole(el, role) {
+  document.querySelectorAll('.role-pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedRole = role;
+}
+
+function doLogin() {
+  APP.role = selectedRole;
+  document.getElementById('step-login').style.display = 'none';
+  document.getElementById('step-mfa').style.display = 'block';
+  setTimeout(() => document.getElementById('mfa0').focus(), 100);
+  addAuditLog('MFA challenge issued', document.getElementById('login-user').value || 'admin');
+}
+
+function mfaNext(el, idx) {
+  if (el.value && idx < 5) document.getElementById('mfa' + (idx+1)).focus();
+}
+
+function verifyMFA() {
+  const code = [0,1,2,3,4,5].map(i => document.getElementById('mfa'+i).value).join('');
+  if (code === '123456') {
+    APP.user = document.getElementById('login-user').value || 'admin@threatpulse.io';
+    launchApp();
+  } else {
+    document.getElementById('mfa-error').style.display = 'block';
+  }
+}
+
+function launchApp() {
+  addAuditLog('Login successful — role: ' + APP.role, APP.user);
+  document.getElementById('login-view').classList.remove('active');
+  document.getElementById('app-view').classList.add('active');
+  document.getElementById('user-name-label').textContent = APP.role;
+  document.getElementById('user-avatar').textContent = APP.role[0];
+  initApp();
+}
+
+function logout() {
+  addAuditLog('User signed out', APP.user);
+  saveState();
+  APP.monitorRunning = false;
+  clearInterval(APP.monitorTimer);
+  document.getElementById('app-view').classList.remove('active');
+  document.getElementById('login-view').classList.add('active');
+  document.getElementById('step-mfa').style.display = 'none';
+  document.getElementById('step-login').style.display = 'block';
+  [0,1,2,3,4,5].forEach(i => document.getElementById('mfa'+i).value = '');
+}
+
+function showUserMenu() {
+  if (confirm(`Signed in as: ${APP.user}\nRole: ${APP.role}\n\nClick OK to sign out.`)) logout();
+}
+
+// ═══════════════════════════════════════════════════
+//  APP INIT
+// ═══════════════════════════════════════════════════
+function initApp() {
+  loadState();
+  buildDashboard();
+  buildPipelineSteps();
+  buildAuditLog();
+  startMonitor();
+  populateReportSummary();
+  updateAlerts();
+  updateStatsUI();
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('threatpulse_state');
+    if (saved) {
+      const s = JSON.parse(saved);
+      APP.feedItems = s.feedItems || [];
+      APP.analysisHistory = s.analysisHistory || [];
+      APP.auditLog = s.auditLog || [];
+      APP.threatLog = s.threatLog || [];
+      APP.stats = s.stats || { scanned:0, threats:0, warnings:0, safe:0 };
+    }
+  } catch(e) {}
+  addAuditLog('Application initialized', APP.user);
+}
+
+function saveState() {
+  try {
+    localStorage.setItem('threatpulse_state', JSON.stringify({
+      feedItems: APP.feedItems.slice(-100),
+      analysisHistory: APP.analysisHistory.slice(-50),
+      auditLog: APP.auditLog.slice(-200),
+      threatLog: APP.threatLog.slice(-100),
+      stats: APP.stats,
+    }));
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════
+//  TAB NAVIGATION
+// ═══════════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).style.display = 'block';
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    if (t.onclick && t.onclick.toString().includes("'" + name + "'")) t.classList.add('active');
+  });
+  if (name === 'reports') { buildReportTable(); buildAuditLogTable(); buildSessionSummary(); }
+  if (name === 'analyze') { renderAnalysisHistory(); }
+  addAuditLog('Navigated to: ' + name, APP.user);
+}
+
+function toggleMobileNav() {
+  document.getElementById('mobile-nav').classList.toggle('open');
+}
+
+// ═══════════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════════
+function buildDashboard() {
+  buildVolumeChart();
+  buildDonutChart();
+  renderPlatformBreakdown();
+  renderKeywordCloud();
+  updateStatsUI();
+}
+
+function updateStatsUI() {
+  const s = APP.stats;
+  animateCount('stat-scanned', s.scanned);
+  animateCount('stat-threats', s.threats);
+  animateCount('stat-warnings', s.warnings);
+  animateCount('stat-safe-count', s.safe);
+  const rate = Math.floor(Math.random() * 30) + 10;
+  document.getElementById('stat-scanned-delta').textContent = `↑ +${rate} / min`;
+  document.getElementById('stat-threats-delta').textContent = `↑ ${Math.floor(s.threats * 0.15)} new`;
+  document.getElementById('stat-warn-delta').textContent = `↑ ${Math.floor(s.warnings * 0.1)} new`;
+  const pct = s.scanned ? Math.round(s.safe / s.scanned * 100) : 0;
+  document.getElementById('stat-safe-delta').textContent = `${pct}% of total`;
+  document.getElementById('feed-count').textContent = s.scanned;
+}
+
+function animateCount(id, target) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const start = parseInt(el.textContent) || 0;
+  const diff = target - start;
+  if (diff === 0) return;
+  let step = 0; const steps = 30;
+  const timer = setInterval(() => {
+    step++;
+    el.textContent = Math.round(start + diff * (step/steps));
+    if (step >= steps) { el.textContent = target; clearInterval(timer); }
+  }, 20);
+}
+
+function buildVolumeChart() {
+  const ctx = document.getElementById('volumeChart').getContext('2d');
+  if (APP.chartRefs.volume) APP.chartRefs.volume.destroy();
+  const labels = Array.from({length:24}, (_,i) => `${i}:00`);
+  const dangers  = labels.map(() => Math.floor(Math.random()*40+5));
+  const warnings = labels.map(() => Math.floor(Math.random()*80+20));
+  const safes    = labels.map(() => Math.floor(Math.random()*200+50));
+  APP.chartRefs.volume = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Danger',  data: dangers,  backgroundColor: 'rgba(255,59,92,0.7)',  stack:'s' },
+        { label: 'Warning', data: warnings, backgroundColor: 'rgba(245,197,66,0.7)', stack:'s' },
+        { label: 'Safe',    data: safes,    backgroundColor: 'rgba(0,229,160,0.5)',  stack:'s' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color:'#8b949e', boxWidth:10, font:{size:11} } } },
+      scales: {
+        x: { ticks: { color:'#8b949e', font:{size:10}, maxTicksLimit:8 }, grid: { color:'rgba(33,38,45,0.6)' } },
+        y: { ticks: { color:'#8b949e', font:{size:10} }, grid: { color:'rgba(33,38,45,0.6)' } },
+      }
+    }
+  });
+}
+
+function buildDonutChart() {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  if (APP.chartRefs.donut) APP.chartRefs.donut.destroy();
+  const s = APP.stats;
+  APP.chartRefs.donut = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Safe','Warning','Danger'],
+      datasets: [{ data: [s.safe||320, s.warnings||180, s.threats||94], backgroundColor: ['rgba(0,229,160,0.8)','rgba(245,197,66,0.8)','rgba(255,59,92,0.8)'], borderColor:'#0d1117', borderWidth:3 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '70%',
+      plugins: {
+        legend: { position:'right', labels: { color:'#8b949e', font:{size:12}, padding:16 } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw} posts` } }
+      }
+    }
+  });
+}
+
+function buildLiveChart() {
+  const ctx = document.getElementById('liveChart').getContext('2d');
+  if (APP.chartRefs.live) APP.chartRefs.live.destroy();
+  APP.liveChartData = Array.from({length:20}, () => Math.floor(Math.random()*10));
+  APP.chartRefs.live = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: APP.liveChartData.map((_,i) => ''),
+      datasets: [{ data: APP.liveChartData, borderColor:'var(--accent)', borderWidth:2, fill:true, backgroundColor:'rgba(88,166,255,0.08)', tension:0.4, pointRadius:0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display:false } },
+      scales: {
+        x: { display:false },
+        y: { ticks: { color:'#8b949e', font:{size:10} }, grid: { color:'rgba(33,38,45,0.4)' } }
+      }
+    }
+  });
+}
+
+function updateLiveChart(val) {
+  if (!APP.chartRefs.live) return;
+  APP.liveChartData.push(val);
+  APP.liveChartData.shift();
+  APP.chartRefs.live.data.datasets[0].data = [...APP.liveChartData];
+  APP.chartRefs.live.update('none');
+}
+
+function renderPlatformBreakdown() {
+  const platforms = [
+    { name:'Twitter/X', icon:'𝕏', count: Math.floor(Math.random()*500+300), threats: Math.floor(Math.random()*40+10) },
+    { name:'Reddit',    icon:'🅡', count: Math.floor(Math.random()*300+200), threats: Math.floor(Math.random()*30+8)  },
+    { name:'Facebook',  icon:'𝐟', count: Math.floor(Math.random()*200+100), threats: Math.floor(Math.random()*20+5)  },
+  ];
+  const el = document.getElementById('platform-breakdown');
+  el.innerHTML = platforms.map(p => {
+    const pct = Math.round(p.threats / p.count * 100);
+    return `<div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+      <div style="font-size:22px; width:36px; text-align:center;">${p.icon}</div>
+      <div style="flex:1;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="font-size:13px; font-weight:600;">${p.name}</span>
+          <span style="font-size:12px; color:var(--muted);">${p.count} posts · <span style="color:var(--danger);">${p.threats} threats</span></span>
+        </div>
+        <div style="height:6px; background:var(--border); border-radius:3px; overflow:hidden;">
+          <div style="width:${pct}%; height:100%; background:linear-gradient(90deg,var(--safe),var(--warn)); border-radius:3px;"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderKeywordCloud() {
+  const allKws = Object.values(THREAT_KEYWORDS).flat();
+  const picked = allKws.sort(() => Math.random()-0.5).slice(0,18);
+  const el = document.getElementById('keyword-cloud');
+  el.innerHTML = picked.map(kw => {
+    const counts = [Math.floor(Math.random()*200+20)];
+    const size = counts[0] > 150 ? 14 : counts[0] > 80 ? 12 : 11;
+    const colors = ['rgba(255,59,92,0.15)','rgba(245,197,66,0.12)','rgba(88,166,255,0.12)'];
+    const textColors = ['var(--danger)','var(--warn)','var(--accent)'];
+    const ci = Math.floor(Math.random()*3);
+    return `<div class="kw" style="background:${colors[ci]};color:${textColors[ci]};font-size:${size}px;border:1px solid ${textColors[ci]}33;">${kw} <span style="opacity:.6">${counts[0]}</span></div>`;
+  }).join('');
+}
+
+function updateAlerts() {
+  const alerts = [];
+  if (APP.stats.threats > 10) alerts.push({type:'danger', msg:`🚨 ${APP.stats.threats} active threats detected. Immediate review recommended.`});
+  if (APP.stats.warnings > 20) alerts.push({type:'warn', msg:`⚠️ ${APP.stats.warnings} warning-level posts require attention.`});
+  alerts.push({type:'safe', msg:`✅ Monitoring active. AI pipeline processing ~${Math.floor(Math.random()*30+10)} posts/min across 3 platforms.`});
+  const el = document.getElementById('alert-area');
+  el.innerHTML = alerts.map(a => `<div class="alert-banner alert-${a.type}">${a.msg}</div>`).join('');
+}
+
+function refreshDashboard() {
+  buildVolumeChart();
+  buildDonutChart();
+  renderPlatformBreakdown();
+  renderKeywordCloud();
+  updateAlerts();
+  addAuditLog('Dashboard refreshed', APP.user);
+}
+
+// ═══════════════════════════════════════════════════
+//  NLP ENGINE (Mock)
+// ═══════════════════════════════════════════════════
+function classifyText(text) {
+  const lower = text.toLowerCase();
+  const words = lower.split(/\s+/);
+  
+  let dangerScore = 0; let warnScore = 0; let safeScore = 0;
+  let foundDangerKws = []; let foundWarnKws = []; let foundSafeKws = [];
+  let category = 'General';
+
+  Object.entries(THREAT_KEYWORDS).forEach(([cat, kws]) => {
+    kws.forEach(kw => {
+      if (lower.includes(kw)) {
+        dangerScore += 25;
+        foundDangerKws.push(kw);
+        category = cat.charAt(0).toUpperCase() + cat.slice(1);
+      }
+    });
+  });
+  WARN_KEYWORDS.forEach(kw => { if (lower.includes(kw)) { warnScore += 12; foundWarnKws.push(kw); } });
+  SAFE_KEYWORDS.forEach(kw => { if (lower.includes(kw)) { safeScore += 8; foundSafeKws.push(kw); } });
+
+  // Adjust for context
+  if (dangerScore > 0 && safeScore > dangerScore) dangerScore = Math.max(0, dangerScore - safeScore * 0.5);
+
+  const total = Math.max(dangerScore + warnScore + safeScore, 10);
+  const dangerPct = Math.min(dangerScore / total * 100 + Math.random() * 5, 99);
+  const warnPct   = Math.min(warnScore   / total * 100 + Math.random() * 5, 99);
+
+  let level, confidence;
+  if (dangerScore >= 25)      { level = 'danger'; confidence = Math.min(Math.round(dangerPct) + 50, 99); }
+  else if (dangerScore > 0 || warnScore >= 12) { level = 'warn'; confidence = Math.min(Math.round(warnPct) + 45, 94); }
+  else { level = 'safe'; confidence = Math.round(70 + Math.random()*25); category = 'General'; }
+
+  const sentiment = dangerScore > 0 ? 'Hostile' : warnScore > 0 ? 'Negative' : 'Positive';
+  const toxicity = dangerScore > 0 ? (0.6 + Math.random()*0.39).toFixed(2) : warnScore > 0 ? (0.3 + Math.random()*0.3).toFixed(2) : (Math.random()*0.2).toFixed(2);
+  const keywords = [...new Set([...foundDangerKws, ...foundWarnKws, ...foundSafeKws])];
+
+  return { level, confidence, category, sentiment, toxicity, keywords, dangerKws: foundDangerKws };
+}
+
+function preprocessText(text) {
+  const lower = text.toLowerCase();
+  const noUrls = lower.replace(/https?:\/\/\S+/g, '[URL]');
+  const noMentions = noUrls.replace(/@\w+/g, '[USER]');
+  const noEmoji = noMentions.replace(/[\u{1F000}-\u{1FFFF}]/gu, '');
+  const tokens = noEmoji.match(/\b\w+\b/g) || [];
+  const stopWords = new Set(['the','a','an','is','it','in','on','at','to','for','of','and','or','but','i','we','you','they','he','she','this','that','with','from']);
+  const filtered = tokens.filter(t => !stopWords.has(t) && t.length > 1);
+  return { cleaned: noMentions.trim(), tokens: filtered.slice(0,20) };
+}
+
+// ═══════════════════════════════════════════════════
+//  LIVE MONITOR
+// ═══════════════════════════════════════════════════
+function buildPipelineSteps() {
+  const steps = [
+    { label:'API Stream Ingestion', desc:'Polling Twitter, Reddit, Facebook APIs' },
+    { label:'Text Preprocessing', desc:'Tokenization, stopword removal, normalization' },
+    { label:'NLP Feature Extraction', desc:'TF-IDF, sentiment vectors, entity recognition' },
+    { label:'Threat Classification', desc:'ML model inference (Transformer + Rules)' },
+    { label:'Confidence Scoring', desc:'Ensemble probability calibration' },
+    { label:'Alert Dispatch', desc:'Routing to dashboard & notification engine' },
+  ];
+  document.getElementById('pipeline-steps').innerHTML = steps.map((s,i) => `
+    <div class="step-item" id="pipe-step-${i}">
+      <div class="step-icon done" id="pipe-icon-${i}">✓</div>
+      <div>
+        <div style="font-size:12px; font-weight:600;">${s.label}</div>
+        <div style="font-size:11px; color:var(--muted);">${s.desc}</div>
+      </div>
+    </div>`).join('');
+}
+
+function startMonitor() {
+  buildLiveChart();
+  renderFeed();
+  APP.monitorTimer = setInterval(monitorTick, 3200);
+  // pre-populate with some items
+  for (let i = 0; i < 8; i++) pushRandomPost(false);
+  renderFeed();
+}
+
+function monitorTick() {
+  if (!APP.monitorRunning) return;
+  pushRandomPost(true);
+  updateLiveChart(APP.feedItems.slice(-5).filter(f => f.level !== 'safe').length);
+  document.getElementById('last-update-time').textContent = 'Updated just now';
+  updateStatsUI();
+  saveState();
+}
+
+function pushRandomPost(animate) {
+  const sample = SAMPLE_POSTS[Math.floor(Math.random() * SAMPLE_POSTS.length)];
+  const result = classifyText(sample.text);
+  const prep = preprocessText(sample.text);
+  const item = {
+    id: 'P' + Date.now() + Math.random().toString(36).slice(2,6).toUpperCase(),
+    text: sample.text,
+    platform: sample.platform,
+    user: USERNAMES[Math.floor(Math.random()*USERNAMES.length)],
+    ts: new Date().toLocaleTimeString(),
+    level: result.level,
+    confidence: result.confidence,
+    category: result.category,
+    sentiment: result.sentiment,
+    toxicity: result.toxicity,
+    tokens: prep.tokens.slice(0,8),
+    keywords: result.keywords,
+    dangerKws: result.dangerKws,
+  };
+  APP.feedItems.unshift(item);
+  if (APP.feedItems.length > 100) APP.feedItems.pop();
+  APP.stats.scanned++;
+  if (item.level === 'danger')       { APP.stats.threats++; APP.threatLog.unshift(item); }
+  else if (item.level === 'warn')    { APP.stats.warnings++; APP.threatLog.unshift(item); }
+  else                               { APP.stats.safe++; }
+  if (animate) renderFeed(true);
+}
+
+function renderFeed(prepend) {
+  const feed = document.getElementById('live-feed');
+  const filtered = APP.feedItems.filter(f => APP.feedFilter === 'all' || f.level === APP.feedFilter);
+  document.getElementById('feed-empty').style.display = filtered.length ? 'none' : 'block';
+  if (!filtered.length) { feed.innerHTML = ''; return; }
+
+  if (prepend && APP.feedFilter === 'all') {
+    const item = filtered[0];
+    const div = document.createElement('div');
+    div.innerHTML = feedItemHTML(item);
+    feed.insertBefore(div.firstChild, feed.firstChild);
+    const kids = feed.children;
+    if (kids.length > 30) feed.removeChild(kids[kids.length-1]);
+    return;
+  }
+  feed.innerHTML = filtered.slice(0, 30).map(feedItemHTML).join('');
+}
+
+function feedItemHTML(item) {
+  const ptClass = item.platform.includes('Twitter') ? 'pt-twitter' : item.platform.includes('Reddit') ? 'pt-reddit' : 'pt-facebook';
+  const ptShort  = item.platform.includes('Twitter') ? 'Twitter/X' : item.platform.includes('Reddit') ? 'Reddit' : 'Facebook';
+  const confClass = item.level;
+  const kws = item.dangerKws && item.dangerKws.length ? item.dangerKws.map(k => `<span class="token token-flagged">${k}</span>`).join('') : '';
+  return `<div class="feed-item ${item.level}">
+    <div class="feed-meta">
+      <span class="platform-tag ${ptClass}">${ptShort}</span>
+      <span style="font-size:12px; color:var(--muted); font-family:var(--mono);">${item.user}</span>
+      <span style="margin-left:auto; font-size:11px; color:var(--muted); font-family:monospace;">${item.ts}</span>
+      <span class="badge badge-${item.level}">${item.level.toUpperCase()}</span>
+    </div>
+    <div class="feed-text">${escHtml(item.text)}</div>
+    ${kws ? `<div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;">${kws}</div>` : ''}
+    <div class="feed-analysis">
+      <div class="analysis-row">
+        <span class="analysis-key">Category</span>
+        <span class="analysis-val" style="color:var(--text);">${item.category}</span>
+      </div>
+      <div class="analysis-row">
+        <span class="analysis-key">Sentiment</span>
+        <span class="analysis-val" style="color:${item.level==='safe'?'var(--safe)':item.level==='warn'?'var(--warn)':'var(--danger)'};">${item.sentiment}</span>
+      </div>
+      <div class="analysis-row">
+        <span class="analysis-key">Toxicity</span>
+        <span class="analysis-val">${item.toxicity}</span>
+      </div>
+      <div class="analysis-row">
+        <span class="analysis-key">Confidence</span>
+        <div class="confidence-bar"><div class="confidence-fill ${confClass}" style="width:${item.confidence}%;"></div></div>
+        <span class="analysis-val">${item.confidence}%</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function setFeedFilter(f) {
+  APP.feedFilter = f;
+  document.querySelectorAll('#tab-monitor .section-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('filter-' + f).classList.add('active');
+  renderFeed();
+}
+
+function toggleMonitor() {
+  APP.monitorRunning = !APP.monitorRunning;
+  const btn = document.getElementById('monitor-toggle');
+  const status = document.getElementById('pipeline-status');
+  if (APP.monitorRunning) {
+    btn.textContent = '⏸ Pause Feed';
+    status.textContent = '● ACTIVE';
+    status.style.color = 'var(--safe)';
+    addAuditLog('Monitor resumed', APP.user);
+  } else {
+    btn.textContent = '▶ Resume Feed';
+    status.textContent = '◼ PAUSED';
+    status.style.color = 'var(--warn)';
+    addAuditLog('Monitor paused', APP.user);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  ANALYZE
+// ═══════════════════════════════════════════════════
+function analyzeText() {
+  const text = document.getElementById('analyze-input').value.trim();
+  if (!text) { alert('Please enter text to analyze.'); return; }
+  const platform = document.getElementById('analyze-platform').value;
+  runAnalysisPipeline(text, platform);
+}
+
+function runAnalysisPipeline(text, platform) {
+  const panel = document.getElementById('analyze-pipeline-panel');
+  const stepsEl = document.getElementById('analyze-steps');
+  const resultArea = document.getElementById('analyze-result-area');
+  panel.style.display = 'block';
+
+  const steps = [
+    'Ingesting text input',
+    'Tokenizing & normalizing',
+    'Removing stopwords',
+    'Extracting NLP features',
+    'Running threat classifier',
+    'Calculating confidence score',
+    'Generating report',
+  ];
+
+  stepsEl.innerHTML = steps.map((s,i) => `
+    <div class="step-item" id="astep-${i}">
+      <div class="step-icon wait" id="astep-icon-${i}">○</div>
+      <span style="color:var(--muted);">${s}</span>
+    </div>`).join('');
+  resultArea.innerHTML = '<div class="empty-state"><div class="icon" style="animation:spin 1s linear infinite;">⚙</div>Processing…</div>';
+
+  let i = 0;
+  const interval = setInterval(() => {
+    if (i > 0) {
+      const prev = document.getElementById(`astep-icon-${i-1}`);
+      if (prev) { prev.className = 'step-icon done'; prev.textContent = '✓'; prev.parentElement.style.opacity = '0.8'; }
+    }
+    if (i < steps.length) {
+      const cur = document.getElementById(`astep-icon-${i}`);
+      if (cur) { cur.className = 'step-icon spin'; cur.textContent = '↻'; cur.parentElement.querySelector('span').style.color = 'var(--text)'; }
+      i++;
+    } else {
+      clearInterval(interval);
+      const result = classifyText(text);
+      const prep = preprocessText(text);
+      displayAnalysisResult(text, platform, result, prep);
+      addToHistory(text, platform, result);
+      addAuditLog(`Text analyzed — verdict: ${result.level}`, APP.user);
+    }
+  }, 320);
+}
+
+function displayAnalysisResult(text, platform, result, prep) {
+  const color = result.level === 'danger' ? 'var(--danger)' : result.level === 'warn' ? 'var(--warn)' : 'var(--safe)';
+  const emoji = result.level === 'danger' ? '🚨' : result.level === 'warn' ? '⚠️' : '✅';
+  const allTokens = prep.tokens.map(t => {
+    const isDanger = result.dangerKws && result.dangerKws.some(k => t.includes(k));
+    return `<span class="token ${isDanger ? 'token-flagged' : 'token-neutral'}">${t}</span>`;
+  }).join('');
+
+  document.getElementById('analyze-result-area').innerHTML = `
+    <div class="result-card" style="border-color:${color}33;">
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+        <div>
+          <div style="font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:4px;">Threat Level</div>
+          <div class="threat-score" style="color:${color};">${emoji}</div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:28px; font-weight:700; color:${color}; font-family:'JetBrains Mono',monospace; letter-spacing:-0.02em;">${result.level.toUpperCase()}</div>
+          <div style="font-size:13px; color:var(--muted);">${result.category}</div>
+        </div>
+        <span class="badge badge-${result.level}">${result.level}</span>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em;">Confidence Score</div>
+        <div class="gauge-wrap">
+          <div class="gauge-bar"><div class="gauge-fill" style="width:${result.confidence}%; background:${color};"></div></div>
+          <div style="font-size:20px; font-weight:700; font-family:'JetBrains Mono',monospace; color:${color}; min-width:48px;">${result.confidence}%</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px; gap:10px;">
+        <div style="background:var(--panel); border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">SENTIMENT</div>
+          <div style="font-size:14px; font-weight:600;">${result.sentiment}</div>
+        </div>
+        <div style="background:var(--panel); border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">TOXICITY SCORE</div>
+          <div style="font-size:14px; font-weight:600; font-family:'JetBrains Mono',monospace;">${result.toxicity}</div>
+        </div>
+      </div>
+
+      ${result.dangerKws && result.dangerKws.length ? `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em;">🚩 Flagged Keywords</div>
+        <div class="token-list">${result.dangerKws.map(k => `<span class="token token-flagged">${k}</span>`).join('')}</div>
+      </div>` : ''}
+
+      <div>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em;">Preprocessed Tokens</div>
+        <div class="token-list">${allTokens}</div>
+      </div>
+    </div>`;
+}
+
+function addToHistory(text, platform, result) {
+  const entry = {
+    time: new Date().toLocaleTimeString(),
+    platform,
+    text: text.slice(0, 60) + (text.length > 60 ? '…' : ''),
+    level: result.level,
+    confidence: result.confidence,
+    category: result.category,
+    id: 'A' + Date.now(),
+  };
+  APP.analysisHistory.unshift(entry);
+  renderAnalysisHistory();
+  saveState();
+}
+
+function renderAnalysisHistory() {
+  const tbody = document.getElementById('analyze-history-body');
+  if (!APP.analysisHistory.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:24px;">No analyses yet.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = APP.analysisHistory.slice(0,20).map(e => `
+    <tr>
+      <td class="mono-small">${e.time}</td>
+      <td><span class="platform-tag ${e.platform.includes('Twitter')?'pt-twitter':e.platform.includes('Reddit')?'pt-reddit':'pt-facebook'}" style="font-size:11px;">${e.platform}</span></td>
+      <td style="font-size:12px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(e.text)}</td>
+      <td><span class="badge badge-${e.level}">${e.level}</span></td>
+      <td><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:${e.level==='danger'?'var(--danger)':e.level==='warn'?'var(--warn)':'var(--safe)'};">${e.confidence}%</span></td>
+      <td style="font-size:12px; color:var(--muted);">${e.category}</td>
+    </tr>`).join('');
+}
+
+function clearHistory() {
+  if (confirm('Clear analysis history?')) { APP.analysisHistory = []; renderAnalysisHistory(); saveState(); }
+}
+
+function clearAnalyze() {
+  document.getElementById('analyze-input').value = '';
+  document.getElementById('analyze-result-area').innerHTML = '<div class="empty-state"><div class="icon">🧠</div>Enter text and click Analyze to run AI classification.</div>';
+  document.getElementById('analyze-pipeline-panel').style.display = 'none';
+}
+
+function loadSample(type) {
+  const samples = SAMPLE_POSTS.filter(p => p.level === type);
+  const s = samples[Math.floor(Math.random() * samples.length)];
+  document.getElementById('analyze-input').value = s.text;
+  const options = Array.from(document.getElementById('analyze-platform').options);
+  options.forEach(o => { if (o.text.includes(s.platform.split('/')[0])) o.selected = true; });
+}
+
+// ═══════════════════════════════════════════════════
+//  REPORTS
+// ═══════════════════════════════════════════════════
+function addAuditLog(event, user) {
+  APP.auditLog.unshift({
+    ts: new Date().toLocaleString(),
+    event,
+    user: user || APP.user,
+    ip: `192.168.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
+    status: Math.random() > 0.05 ? 'SUCCESS' : 'FLAGGED',
+  });
+  if (APP.auditLog.length > 200) APP.auditLog.pop();
+}
+
+function buildAuditLog() {
+  const events = ['System initialized','Monitor started','API connection established','ML model loaded','Database connection verified'];
+  events.forEach(e => addAuditLog(e, 'SYSTEM'));
+}
+
+function showReportTab(tab) {
+  ['threats','audit','summary'].forEach(t => {
+    document.getElementById(`rtab-${t}-content`).style.display = t === tab ? (t === 'summary' ? 'block' : 'block') : 'none';
+    document.getElementById(`rtab-${t}`).classList.toggle('active', t === tab);
+  });
+}
+
+function generateReport() {
+  buildReportTable();
+  document.getElementById('report-generated-time').textContent = 'Generated: ' + new Date().toLocaleString();
+  addAuditLog('Threat report generated', APP.user);
+  populateReportSummary();
+  const notice = document.createElement('div');
+  notice.className = 'alert-banner alert-safe';
+  notice.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:999;';
+  notice.textContent = '✅ Report generated successfully';
+  document.body.appendChild(notice);
+  setTimeout(() => notice.remove(), 3000);
+}
+
+function buildReportTable() {
+  const threats = APP.threatLog.slice(0,50);
+  if (!threats.length) {
+    // generate mock
+    for (let i = 0; i < 15; i++) {
+      const s = SAMPLE_POSTS.filter(p => p.level !== 'safe')[Math.floor(Math.random()*SAMPLE_POSTS.filter(p=>p.level!=='safe').length)];
+      const r = classifyText(s.text);
+      APP.threatLog.push({ id:'T'+Date.now()+i, text:s.text, platform:s.platform, ts:new Date(Date.now()-i*600000).toLocaleString(), level:r.level, category:r.category, confidence:r.confidence, user:USERNAMES[i%USERNAMES.length] });
+    }
+  }
+  const tbody = document.getElementById('threat-report-body');
+  tbody.innerHTML = APP.threatLog.slice(0,30).map((t,i) => `
+    <tr>
+      <td class="mono-small">#${String(i+1).padStart(4,'0')}</td>
+      <td class="mono-small">${t.ts || new Date().toLocaleString()}</td>
+      <td><span class="platform-tag ${t.platform&&t.platform.includes('Twitter')?'pt-twitter':t.platform&&t.platform.includes('Reddit')?'pt-reddit':'pt-facebook'}" style="font-size:11px;">${t.platform||'Unknown'}</span></td>
+      <td style="font-size:12px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml((t.text||'').slice(0,60))}…</td>
+      <td style="font-size:12px; color:var(--muted);">${t.category||'Unknown'}</td>
+      <td><span class="badge badge-${t.level}">${(t.level||'').toUpperCase()}</span></td>
+      <td><span style="font-family:'JetBrains Mono',monospace; font-size:12px;">${t.confidence||0}%</span></td>
+      <td class="mono-small">${t.user||'SYSTEM'}</td>
+    </tr>`).join('');
+}
+
+function buildAuditLogTable() {
+  const tbody = document.getElementById('audit-log-body');
+  tbody.innerHTML = APP.auditLog.slice(0,40).map(a => `
+    <tr>
+      <td class="mono-small">${a.ts}</td>
+      <td style="font-size:13px;">${a.event}</td>
+      <td style="font-size:12px; color:var(--accent);">${a.user}</td>
+      <td class="mono-small">${a.ip}</td>
+      <td><span class="badge ${a.status==='SUCCESS'?'badge-safe':a.status==='FLAGGED'?'badge-danger':'badge-warn'}">${a.status}</span></td>
+    </tr>`).join('');
+}
+
+function populateReportSummary() {
+  const s = APP.stats;
+  const cards = [
+    { label:'Total Scanned', value: s.scanned || 594, icon:'📡', color:'info' },
+    { label:'Threats Found', value: s.threats || 94,  icon:'🚨', color:'danger' },
+    { label:'Warnings',      value: s.warnings || 181, icon:'⚠️', color:'warn' },
+    { label:'Safe Posts',    value: s.safe || 319,    icon:'✅', color:'safe' },
+    { label:'Audit Events',  value: APP.auditLog.length, icon:'🔍', color:'info' },
+    { label:'Analyses Run',  value: APP.analysisHistory.length, icon:'🧠', color:'info' },
+  ];
+  document.getElementById('report-summary-cards').innerHTML = cards.map(c => `
+    <div class="stat-card ${c.color}" style="padding:16px;">
+      <div style="font-size:18px; margin-bottom:4px;">${c.icon}</div>
+      <div class="stat-value" style="font-size:26px; ${c.color==='danger'?'color:var(--danger)':c.color==='warn'?'color:var(--warn)':c.color==='safe'?'color:var(--safe)':''};">${c.value}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+}
+
+function buildSessionSummary() {
+  const el = document.getElementById('session-summary-content');
+  const s = APP.stats;
+  const total = (s.scanned || 1);
+  const threatPct = Math.round((s.threats||0) / total * 100);
+  const warnPct = Math.round((s.warnings||0) / total * 100);
+  const safePct = 100 - threatPct - warnPct;
+  el.innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; flex-wrap:wrap;">
+      <div>
+        <h3 style="font-size:15px; font-weight:600; margin-bottom:16px; color:var(--accent);">Session Overview</h3>
+        <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
+          <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);"><span style="color:var(--muted);">Session Start</span><span>${new Date(Date.now()-3600000).toLocaleTimeString()}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);"><span style="color:var(--muted);">Duration</span><span>~60 minutes</span></div>
+          <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);"><span style="color:var(--muted);">Operator</span><span style="color:var(--accent);">${APP.user}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);"><span style="color:var(--muted);">Role</span><span>${APP.role}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);"><span style="color:var(--muted);">Model Version</span><span class="mono-small">NLP-Transformer-v2.4</span></div>
+          <div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--muted);">API Sources</span><span>Twitter/X, Reddit, Facebook</span></div>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:15px; font-weight:600; margin-bottom:16px; color:var(--accent);">Classification Breakdown</h3>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          ${[['🚨 Danger / Threats', threatPct, 'var(--danger)', s.threats||0],
+             ['⚠️  Warnings', warnPct, 'var(--warn)', s.warnings||0],
+             ['✅  Safe', safePct, 'var(--safe)', s.safe||0]].map(([label, pct, color, count]) => `
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;">
+              <span>${label}</span>
+              <span style="color:${color}; font-family:'JetBrains Mono',monospace;">${count} (${pct}%)</span>
+            </div>
+            <div style="height:7px; background:var(--border); border-radius:4px; overflow:hidden;">
+              <div style="width:${pct}%; height:100%; background:${color}; border-radius:4px;"></div>
+            </div>
+          </div>`).join('')}
+        </div>
+        <div style="margin-top:20px; padding:14px; background:var(--panel); border-radius:8px; border:1px solid var(--border);">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.06em;">System Status</div>
+          <div style="font-size:13px; color:var(--safe);">✅ All systems operational. No anomalies detected.</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function exportPDF() {
+  addAuditLog('PDF export initiated', APP.user);
+  const w = window.open('', '_blank');
+  const s = APP.stats;
+  w.document.write(`<!DOCTYPE html><html><head><title>ThreatPulse Report</title>
+  <style>body{font-family:Arial,sans-serif;padding:40px;color:#333;} h1{color:#1a1a2e;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px;} th{background:#f0f0f0;} .danger{color:#cc2244;} .warn{color:#aa7700;} .safe{color:#006633;}</style>
+  </head><body>
+  <h1>🛡 ThreatPulse — Threat Intelligence Report</h1>
+  <p><b>Generated:</b> ${new Date().toLocaleString()} | <b>Operator:</b> ${APP.user} | <b>Role:</b> ${APP.role}</p>
+  <hr/>
+  <h2>Session Summary</h2>
+  <table><tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Total Posts Scanned</td><td>${s.scanned||594}</td></tr>
+  <tr><td>Threats Detected</td><td class="danger">${s.threats||94}</td></tr>
+  <tr><td>Warnings Flagged</td><td class="warn">${s.warnings||181}</td></tr>
+  <tr><td>Safe Posts</td><td class="safe">${s.safe||319}</td></tr>
+  <tr><td>Audit Events</td><td>${APP.auditLog.length}</td></tr>
+  </table>
+  <h2>Recent Threat Log</h2>
+  <table><tr><th>Time</th><th>Platform</th><th>Level</th><th>Category</th><th>Confidence</th><th>Text</th></tr>
+  ${APP.threatLog.slice(0,15).map(t=>`<tr><td>${t.ts||''}</td><td>${t.platform||''}</td><td class="${t.level}">${(t.level||'').toUpperCase()}</td><td>${t.category||''}</td><td>${t.confidence||0}%</td><td>${escHtml((t.text||'').slice(0,80))}</td></tr>`).join('')}
+  </table>
+  <h2>Audit Log</h2>
+  <table><tr><th>Timestamp</th><th>Event</th><th>User</th><th>Status</th></tr>
+  ${APP.auditLog.slice(0,20).map(a=>`<tr><td>${a.ts}</td><td>${a.event}</td><td>${a.user}</td><td>${a.status}</td></tr>`).join('')}
+  </table>
+  <br/><hr/><p style="font-size:11px;color:#888;">ThreatPulse AI Threat Monitor · Confidential · Do not distribute</p>
+  </body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 500);
+}
+
+function exportCSV() {
+  addAuditLog('CSV export initiated', APP.user);
+  const rows = [['ID','Timestamp','Platform','Level','Category','Confidence','Text']];
+  APP.threatLog.slice(0,100).forEach((t,i) => {
+    rows.push([`T${String(i+1).padStart(4,'0')}`, t.ts||'', t.platform||'', t.level||'', t.category||'', `${t.confidence||0}%`, `"${(t.text||'').replace(/"/g,"'")}"`]);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `threatpulse_report_${Date.now()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Seed some stats if fresh
+  const saved = localStorage.getItem('threatpulse_state');
+  if (!saved) {
+    APP.stats = { scanned: Math.floor(Math.random()*400+200), threats: Math.floor(Math.random()*80+20), warnings: Math.floor(Math.random()*150+50), safe: Math.floor(Math.random()*300+100) };
+  }
+});
+</script>
+</body>
+</html>
