@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ThreatPulse — AI Social Media Threat Monitor</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              950: '#050b14',
+              900: '#0a1628',
+              800: '#0f2240',
+              700: '#163260',
+              600: '#1e4d94',
+              500: '#2563eb',
+              accent: '#00d4ff',
+              green: '#00ff88',
+              red: '#ff3366',
+              yellow: '#ffcc00',
+              purple: '#8b5cf6',
+            }
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
+            sans: ['"Inter"', 'system-ui', 'sans-serif'],
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'scan': 'scan 2s linear infinite',
+            'glow': 'glow 2s ease-in-out infinite alternate',
+            'fadeIn': 'fadeIn 0.3s ease-in-out',
+            'slideIn': 'slideIn 0.3s ease-out',
+          },
+          keyframes: {
+            scan: {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100vh)' }
+            },
+            glow: {
+              'from': { textShadow: '0 0 10px #00d4ff, 0 0 20px #00d4ff' },
+              'to': { textShadow: '0 0 20px #00d4ff, 0 0 40px #00d4ff, 0 0 60px #00d4ff' }
+            },
+            fadeIn: {
+              'from': { opacity: '0', transform: 'translateY(8px)' },
+              'to': { opacity: '1', transform: 'translateY(0)' }
+            },
+            slideIn: {
+              'from': { opacity: '0', transform: 'translateX(-12px)' },
+              'to': { opacity: '1', transform: 'translateX(0)' }
+            }
+          },
+          boxShadow: {
+            'cyber': '0 0 20px rgba(0, 212, 255, 0.15)',
+            'cyber-lg': '0 0 40px rgba(0, 212, 255, 0.25)',
+            'danger': '0 0 20px rgba(255, 51, 102, 0.25)',
+            'safe': '0 0 20px rgba(0, 255, 136, 0.15)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="bg-cyber-950 text-gray-100 font-sans min-h-screen flex overflow-hidden">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ═══════════════════════════════════════════════════════════ -->
+  <aside id="sidebar" class="sidebar w-64 bg-cyber-900 border-r border-cyber-800 flex flex-col flex-shrink-0 relative z-20 transition-all duration-300">
+    <!-- Logo -->
+    <div class="px-5 py-5 border-b border-cyber-800">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-cyber-800 border border-cyber-accent/30 flex items-center justify-center shadow-cyber flex-shrink-0">
+          <i class="fa-solid fa-shield-halved text-cyber-accent text-sm"></i>
+        </div>
+        <div class="sidebar-text">
+          <div class="text-white font-semibold text-sm tracking-wide leading-tight">ThreatPulse</div>
+          <div class="text-cyber-accent/70 text-xs font-mono">AI Monitor v1.0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Badge -->
+    <div class="sidebar-text px-5 py-3 border-b border-cyber-800">
+      <div class="flex items-center gap-2">
+        <span id="api-status-dot" class="w-2 h-2 rounded-full bg-gray-500 flex-shrink-0"></span>
+        <span id="api-status-text" class="text-xs text-gray-400 font-mono">API: Not Configured</span>
+      </div>
+    </div>
+
+    <!-- Nav Links -->
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 active" data-view="dashboard">
+        <i class="fa-solid fa-gauge-high w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Dashboard</span>
+      </button>
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" data-view="analyzer">
+        <i class="fa-solid fa-magnifying-glass-chart w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Text Analyzer</span>
+      </button>
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" data-view="monitor">
+        <i class="fa-solid fa-tower-broadcast w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Live Monitor</span>
+      </button>
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" data-view="analytics">
+        <i class="fa-solid fa-chart-line w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Analytics</span>
+      </button>
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" data-view="incidents">
+        <i class="fa-solid fa-clipboard-list w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Incident Log</span>
+        <span id="incident-badge" class="sidebar-text ml-auto bg-cyber-accent/20 text-cyber-accent text-xs font-mono px-1.5 py-0.5 rounded hidden">0</span>
+      </button>
+
+      <div class="pt-4 pb-1">
+        <div class="sidebar-text text-xs text-gray-600 font-mono px-3 uppercase tracking-widest">Configuration</div>
+      </div>
+
+      <button class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200" data-view="settings">
+        <i class="fa-solid fa-gear w-4 text-center flex-shrink-0"></i>
+        <span class="sidebar-text">Settings</span>
+      </button>
+    </nav>
+
+    <!-- Session Stats -->
+    <div class="sidebar-text px-5 py-4 border-t border-cyber-800 space-y-2">
+      <div class="text-xs text-gray-600 font-mono uppercase tracking-widest mb-2">Session</div>
+      <div class="flex justify-between text-xs">
+        <span class="text-gray-400">Analyzed</span>
+        <span id="stat-total" class="text-cyber-accent font-mono">0</span>
+      </div>
+      <div class="flex justify-between text-xs">
+        <span class="text-gray-400">Threats</span>
+        <span id="stat-threats" class="text-cyber-red font-mono">0</span>
+      </div>
+      <div class="flex justify-between text-xs">
+        <span class="text-gray-400">Safe</span>
+        <span id="stat-safe" class="text-cyber-green font-mono">0</span>
+      </div>
+    </div>
+
+    <!-- Collapse Button -->
+    <button id="sidebar-toggle" class="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-cyber-800 border border-cyber-700 rounded-full flex items-center justify-center text-gray-400 hover:text-cyber-accent transition-colors z-30">
+      <i class="fa-solid fa-chevron-left text-xs" id="toggle-icon"></i>
+    </button>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MAIN CONTENT AREA
+  ═══════════════════════════════════════════════════════════ -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Top Header Bar -->
+    <header class="bg-cyber-900/80 backdrop-blur border-b border-cyber-800 px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <h1 id="page-title" class="text-white font-semibold text-base">Dashboard</h1>
+        <span class="text-gray-600 text-sm font-mono hidden sm:inline" id="page-subtitle">// Overview</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Live clock -->
+        <div class="text-cyber-accent/70 text-xs font-mono hidden md:block" id="clock"></div>
+        <!-- Threat level indicator -->
+        <div class="flex items-center gap-1.5 bg-cyber-800 border border-cyber-700 rounded-full px-3 py-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyber-green animate-pulse-slow"></span>
+          <span class="text-xs font-mono text-gray-300">MONITORING</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Views Container -->
+    <div class="flex-1 overflow-y-auto p-6 space-y-6">
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: DASHBOARD
+      ───────────────────────────────────────────── -->
+      <section id="view-dashboard" class="view-section space-y-6 animate-fadeIn">
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="kpi-card bg-cyber-900 border border-cyber-800 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-20 h-20 bg-cyber-accent/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+            <div class="text-gray-400 text-xs font-mono uppercase tracking-wider mb-2">Total Analyzed</div>
+            <div class="text-3xl font-bold text-white font-mono" id="kpi-total">0</div>
+            <div class="text-cyber-accent text-xs mt-1">this session</div>
+          </div>
+          <div class="kpi-card bg-cyber-900 border border-cyber-800 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-20 h-20 bg-cyber-red/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+            <div class="text-gray-400 text-xs font-mono uppercase tracking-wider mb-2">Threats Detected</div>
+            <div class="text-3xl font-bold text-cyber-red font-mono" id="kpi-threats">0</div>
+            <div class="text-cyber-red/60 text-xs mt-1">danger + warning</div>
+          </div>
+          <div class="kpi-card bg-cyber-900 border border-cyber-800 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-20 h-20 bg-cyber-green/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+            <div class="text-gray-400 text-xs font-mono uppercase tracking-wider mb-2">Safe Posts</div>
+            <div class="text-3xl font-bold text-cyber-green font-mono" id="kpi-safe">0</div>
+            <div class="text-cyber-green/60 text-xs mt-1">no threat found</div>
+          </div>
+          <div class="kpi-card bg-cyber-900 border border-cyber-800 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-20 h-20 bg-cyber-yellow/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+            <div class="text-gray-400 text-xs font-mono uppercase tracking-wider mb-2">Threat Rate</div>
+            <div class="text-3xl font-bold text-cyber-yellow font-mono" id="kpi-rate">0%</div>
+            <div class="text-cyber-yellow/60 text-xs mt-1">of all posts</div>
+          </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <!-- Pie: Threat Distribution -->
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-chart-pie text-cyber-accent"></i>
+              Threat Distribution
+            </div>
+            <div class="flex items-center justify-center h-48">
+              <canvas id="chart-pie"></canvas>
+            </div>
+          </div>
+
+          <!-- Bar: Session Timeline -->
+          <div class="lg:col-span-2 bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-chart-bar text-cyber-accent"></i>
+              Analysis Timeline
+              <span class="ml-auto text-xs text-gray-500 font-mono">last 10 analyses</span>
+            </div>
+            <div class="h-48">
+              <canvas id="chart-timeline"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+          <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-cyber-accent"></i>
+            Recent Activity
+          </div>
+          <div id="recent-activity" class="space-y-2">
+            <div class="text-gray-500 text-sm text-center py-8 font-mono">
+              <i class="fa-solid fa-satellite-dish text-3xl mb-3 block opacity-30"></i>
+              No analyses yet. Run the Text Analyzer to begin.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: TEXT ANALYZER
+      ───────────────────────────────────────────── -->
+      <section id="view-analyzer" class="view-section hidden space-y-6 animate-fadeIn">
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- Input Form -->
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-5">
+            <div class="flex items-center gap-2 mb-1">
+              <i class="fa-solid fa-microchip text-cyber-accent"></i>
+              <h2 class="text-white font-semibold">Analyze Post</h2>
+            </div>
+            <p class="text-gray-400 text-sm">Paste a social media post or any text to analyze it for threats, hate speech, or harmful sentiment.</p>
+
+            <!-- Model Selector -->
+            <div>
+              <label class="block text-xs text-gray-400 font-mono uppercase tracking-wider mb-1.5">AI Model</label>
+              <select id="model-select" class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-cyber-accent/50 transition-colors">
+                <option value="cardiffnlp/twitter-roberta-base-sentiment-latest">Twitter RoBERTa — Sentiment (Latest)</option>
+                <option value="facebook/roberta-hate-speech-dynabench-r4-target">Facebook RoBERTa — Hate Speech</option>
+                <option value="unitary/toxic-bert">Toxic-BERT — Toxicity Detection</option>
+                <option value="cardiffnlp/twitter-roberta-base-offensive">Twitter RoBERTa — Offensive Language</option>
+                <option value="martin-ha/toxic-comment-model">Toxic Comment Classifier</option>
+              </select>
+            </div>
+
+            <!-- Text Input -->
+            <div>
+              <label class="block text-xs text-gray-400 font-mono uppercase tracking-wider mb-1.5">Post Text</label>
+              <textarea id="analyze-input" rows="6"
+                class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-cyber-accent/50 transition-colors resize-none"
+                placeholder="Paste a tweet, comment, or any text here..."></textarea>
+              <div class="flex justify-between mt-1">
+                <span class="text-xs text-gray-600 font-mono" id="char-count">0 / 512 chars</span>
+                <button id="clear-btn" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Clear</button>
+              </div>
+            </div>
+
+            <!-- Sample Texts -->
+            <div>
+              <div class="text-xs text-gray-500 font-mono mb-2">Quick samples:</div>
+              <div class="flex flex-wrap gap-2">
+                <button class="sample-btn text-xs bg-cyber-800 border border-cyber-700 rounded-full px-3 py-1 text-gray-400 hover:text-cyber-accent hover:border-cyber-accent/40 transition-all" data-text="I love sunny days and spending time with my family! 🌞">😊 Safe</button>
+                <button class="sample-btn text-xs bg-cyber-800 border border-cyber-700 rounded-full px-3 py-1 text-gray-400 hover:text-cyber-yellow hover:border-cyber-yellow/40 transition-all" data-text="This product is absolutely terrible. I hate it and the company that made it.">⚠️ Warning</button>
+                <button class="sample-btn text-xs bg-cyber-800 border border-cyber-700 rounded-full px-3 py-1 text-gray-400 hover:text-cyber-red hover:border-cyber-red/40 transition-all" data-text="I despise these people. They should all disappear from this planet.">🔴 Danger</button>
+              </div>
+            </div>
+
+            <!-- Analyze Button -->
+            <button id="analyze-btn"
+              class="w-full bg-cyber-600 hover:bg-cyber-500 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-cyber hover:shadow-cyber-lg disabled:opacity-50 disabled:cursor-not-allowed">
+              <i class="fa-solid fa-wand-magic-sparkles" id="analyze-icon"></i>
+              <span id="analyze-btn-text">Analyze with AI</span>
+            </button>
+
+            <!-- API Warning -->
+            <div id="no-api-warning" class="hidden bg-cyber-yellow/10 border border-cyber-yellow/30 rounded-lg px-4 py-3 text-xs text-cyber-yellow flex items-start gap-2">
+              <i class="fa-solid fa-triangle-exclamation mt-0.5 flex-shrink-0"></i>
+              <span>No Hugging Face API key configured. Go to <strong>Settings</strong> to add your free token.</span>
+            </div>
+          </div>
+
+          <!-- Results Panel -->
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-5">
+            <div class="flex items-center gap-2 mb-1">
+              <i class="fa-solid fa-signal text-cyber-accent"></i>
+              <h2 class="text-white font-semibold">Analysis Result</h2>
+            </div>
+
+            <!-- Empty State -->
+            <div id="result-empty" class="flex flex-col items-center justify-center h-64 text-center">
+              <div class="w-16 h-16 rounded-full bg-cyber-800 border border-cyber-700 flex items-center justify-center mb-4">
+                <i class="fa-solid fa-radar text-2xl text-gray-600"></i>
+              </div>
+              <p class="text-gray-500 text-sm">Results will appear here after analysis</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="result-loading" class="hidden flex flex-col items-center justify-center h-64">
+              <div class="scanner-ring mb-6"></div>
+              <p class="text-cyber-accent text-sm font-mono animate-pulse">Querying AI model...</p>
+              <p class="text-gray-500 text-xs mt-1 font-mono" id="loading-model-name"></p>
+            </div>
+
+            <!-- Result Content -->
+            <div id="result-content" class="hidden space-y-5 animate-fadeIn">
+
+              <!-- Verdict Badge -->
+              <div class="flex items-center justify-center">
+                <div id="verdict-badge" class="verdict-badge text-center">
+                  <div id="verdict-icon" class="text-4xl mb-2"></div>
+                  <div id="verdict-label" class="text-xl font-bold font-mono"></div>
+                  <div id="verdict-desc" class="text-xs mt-1 opacity-70"></div>
+                </div>
+              </div>
+
+              <!-- Confidence Bars -->
+              <div id="confidence-bars" class="space-y-3"></div>
+
+              <!-- Raw Scores -->
+              <div class="bg-cyber-800 rounded-lg p-4">
+                <div class="text-xs text-gray-500 font-mono uppercase tracking-wider mb-2">Raw API Response</div>
+                <pre id="raw-response" class="text-xs text-gray-300 font-mono overflow-x-auto whitespace-pre-wrap"></pre>
+              </div>
+
+              <!-- Save / Timestamp -->
+              <div class="flex items-center justify-between text-xs text-gray-500 font-mono">
+                <span id="result-timestamp"></span>
+                <span class="text-cyber-green flex items-center gap-1">
+                  <i class="fa-solid fa-check-circle"></i> Saved to log
+                </span>
+              </div>
+            </div>
+
+            <!-- Error State -->
+            <div id="result-error" class="hidden flex flex-col items-center justify-center h-64 text-center">
+              <div class="w-16 h-16 rounded-full bg-cyber-red/10 border border-cyber-red/30 flex items-center justify-center mb-4">
+                <i class="fa-solid fa-circle-xmark text-2xl text-cyber-red"></i>
+              </div>
+              <p class="text-cyber-red text-sm font-semibold" id="error-title">Analysis Failed</p>
+              <p class="text-gray-500 text-xs mt-1 max-w-xs" id="error-msg"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Analyzer -->
+        <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-cyber-accent"></i>
+              <h2 class="text-white font-semibold">Batch Analyzer</h2>
+            </div>
+            <span class="text-xs text-gray-500 font-mono">one post per line</span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2">
+              <textarea id="batch-input" rows="5"
+                class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-cyber-accent/50 transition-colors resize-none"
+                placeholder="Enter multiple posts, one per line...&#10;Post 1 text here&#10;Post 2 text here&#10;Post 3 text here"></textarea>
+            </div>
+            <div class="flex flex-col gap-3">
+              <button id="batch-btn"
+                class="flex-1 bg-cyber-800 hover:bg-cyber-700 border border-cyber-700 hover:border-cyber-accent/40 text-white font-medium py-2.5 px-4 rounded-lg transition-all text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-play"></i>
+                Run Batch
+              </button>
+              <div id="batch-progress" class="hidden">
+                <div class="text-xs text-gray-400 font-mono mb-1.5" id="batch-progress-text">Processing 0/0...</div>
+                <div class="h-1.5 bg-cyber-800 rounded-full overflow-hidden">
+                  <div id="batch-progress-bar" class="h-full bg-cyber-accent rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="batch-results" class="space-y-2 hidden"></div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: LIVE MONITOR
+      ───────────────────────────────────────────── -->
+      <section id="view-monitor" class="view-section hidden space-y-6 animate-fadeIn">
+
+        <!-- Feed Configuration -->
+        <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-rss text-cyber-accent"></i>
+            <h2 class="text-white font-semibold">Feed Configuration</h2>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-2">
+              <label class="block text-xs text-gray-400 font-mono uppercase tracking-wider mb-1.5">Feed URL (RSS / JSON)</label>
+              <input type="url" id="feed-url"
+                class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-cyber-accent/50 transition-colors"
+                placeholder="https://example.com/feed.json or RSS URL..." />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 font-mono uppercase tracking-wider mb-1.5">Poll Interval</label>
+              <select id="poll-interval" class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-cyber-accent/50 transition-colors">
+                <option value="30">Every 30s</option>
+                <option value="60" selected>Every 60s</option>
+                <option value="300">Every 5m</option>
+                <option value="600">Every 10m</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <button id="monitor-start-btn"
+              class="bg-cyber-green/10 border border-cyber-green/30 hover:bg-cyber-green/20 text-cyber-green font-medium py-2 px-4 rounded-lg text-sm transition-all flex items-center gap-2">
+              <i class="fa-solid fa-play"></i> Start Monitoring
+            </button>
+            <button id="monitor-stop-btn" disabled
+              class="bg-cyber-red/10 border border-cyber-red/30 hover:bg-cyber-red/20 text-cyber-red font-medium py-2 px-4 rounded-lg text-sm transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+              <i class="fa-solid fa-stop"></i> Stop
+            </button>
+            <button id="monitor-simulate-btn"
+              class="bg-cyber-purple/10 border border-cyber-purple/30 hover:bg-cyber-purple/20 text-cyber-purple font-medium py-2 px-4 rounded-lg text-sm transition-all flex items-center gap-2">
+              <i class="fa-solid fa-flask"></i> Simulate Feed
+            </button>
+            <div id="monitor-status" class="flex items-center gap-2 text-xs font-mono text-gray-500 ml-auto">
+              <span class="w-2 h-2 rounded-full bg-gray-600" id="monitor-dot"></span>
+              <span id="monitor-status-text">Idle</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Feed Stream -->
+        <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-stream text-cyber-accent"></i>
+              <h2 class="text-white font-semibold text-sm">Live Stream</h2>
+            </div>
+            <button id="clear-feed-btn" class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-mono">
+              <i class="fa-solid fa-trash-can mr-1"></i>Clear
+            </button>
+          </div>
+          <div id="live-feed" class="space-y-2 max-h-96 overflow-y-auto custom-scroll">
+            <div class="text-gray-500 text-sm text-center py-12 font-mono">
+              <i class="fa-solid fa-satellite-dish text-4xl mb-3 block opacity-20"></i>
+              Waiting for feed data...<br/>
+              <span class="text-xs text-gray-600 mt-1 block">Use "Simulate Feed" to test without a real URL</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: ANALYTICS
+      ───────────────────────────────────────────── -->
+      <section id="view-analytics" class="view-section hidden space-y-6 animate-fadeIn">
+
+        <!-- Analytics Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-white font-semibold flex items-center gap-2">
+            <i class="fa-solid fa-chart-area text-cyber-accent"></i>
+            Analytics Overview
+          </h2>
+          <div class="flex gap-2">
+            <button id="export-csv-btn"
+              class="text-xs bg-cyber-800 border border-cyber-700 hover:border-cyber-accent/40 text-gray-300 hover:text-cyber-accent rounded-lg px-3 py-1.5 transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-file-csv"></i> Export CSV
+            </button>
+            <button id="reset-analytics-btn"
+              class="text-xs bg-cyber-800 border border-cyber-700 hover:border-cyber-red/40 text-gray-300 hover:text-cyber-red rounded-lg px-3 py-1.5 transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-rotate"></i> Reset Session
+            </button>
+          </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-chart-column text-cyber-accent"></i>
+              Threat vs Safe — Session Count
+            </div>
+            <div class="h-56">
+              <canvas id="chart-bar-analytics"></canvas>
+            </div>
+          </div>
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-chart-area text-cyber-accent"></i>
+              Confidence Score Trend
+            </div>
+            <div class="h-56">
+              <canvas id="chart-confidence-trend"></canvas>
+            </div>
+          </div>
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-circle-half-stroke text-cyber-accent"></i>
+              Severity Breakdown (Doughnut)
+            </div>
+            <div class="h-56 flex items-center justify-center">
+              <canvas id="chart-doughnut"></canvas>
+            </div>
+          </div>
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-5">
+            <div class="text-white font-medium text-sm mb-4 flex items-center gap-2">
+              <i class="fa-solid fa-table text-cyber-accent"></i>
+              Model Usage Stats
+            </div>
+            <div id="model-stats-table" class="space-y-2">
+              <div class="text-gray-500 text-sm text-center py-8 font-mono">No data yet</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: INCIDENT LOG
+      ───────────────────────────────────────────── -->
+      <section id="view-incidents" class="view-section hidden space-y-6 animate-fadeIn">
+
+        <!-- Filters & Actions -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex-1 min-w-48">
+            <div class="relative">
+              <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+              <input type="text" id="log-search"
+                class="w-full bg-cyber-900 border border-cyber-800 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyber-accent/50 transition-colors"
+                placeholder="Search incidents..." />
+            </div>
+          </div>
+          <select id="log-filter" class="bg-cyber-900 border border-cyber-800 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-cyber-accent/50 transition-colors">
+            <option value="all">All Levels</option>
+            <option value="DANGER">Danger Only</option>
+            <option value="WARNING">Warning Only</option>
+            <option value="SAFE">Safe Only</option>
+          </select>
+          <button id="clear-log-btn"
+            class="text-xs bg-cyber-800 border border-cyber-700 hover:border-cyber-red/40 text-gray-300 hover:text-cyber-red rounded-lg px-3 py-2 transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-trash-can"></i> Clear Log
+          </button>
+        </div>
+
+        <!-- Log Count -->
+        <div class="text-xs text-gray-500 font-mono" id="log-count">0 incidents stored</div>
+
+        <!-- Log Entries -->
+        <div id="incident-log-list" class="space-y-3">
+          <div class="text-gray-500 text-sm text-center py-12 font-mono">
+            <i class="fa-solid fa-folder-open text-4xl mb-3 block opacity-20"></i>
+            No incidents logged yet
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────
+           VIEW: SETTINGS
+      ───────────────────────────────────────────── -->
+      <section id="view-settings" class="view-section hidden space-y-6 animate-fadeIn">
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- API Key Configuration -->
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-5">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-key text-cyber-accent"></i>
+              <h2 class="text-white font-semibold">Hugging Face API Key</h2>
+            </div>
+            <p class="text-gray-400 text-sm">Your API key is stored <strong class="text-white">only in your browser's LocalStorage</strong> — it never leaves your device.</p>
+
+            <div>
+              <label class="block text-xs text-gray-400 font-mono uppercase tracking-wider mb-1.5">API Token</label>
+              <div class="relative">
+                <input type="password" id="api-key-input"
+                  class="w-full bg-cyber-800 border border-cyber-700 rounded-lg px-3 py-2.5 pr-10 text-sm text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-cyber-accent/50 transition-colors"
+                  placeholder="hf_xxxxxxxxxxxxxxxxxxxx" />
+                <button id="toggle-key-visibility" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                  <i class="fa-solid fa-eye text-sm" id="eye-icon"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <button id="save-api-key-btn"
+                class="flex-1 bg-cyber-600 hover:bg-cyber-500 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-floppy-disk"></i> Save Key
+              </button>
+              <button id="test-api-key-btn"
+                class="bg-cyber-800 border border-cyber-700 hover:border-cyber-accent/40 text-gray-300 hover:text-cyber-accent font-medium py-2.5 px-4 rounded-lg text-sm transition-all flex items-center gap-2">
+                <i class="fa-solid fa-plug-circle-check"></i> Test
+              </button>
+              <button id="remove-api-key-btn"
+                class="bg-cyber-red/10 border border-cyber-red/30 hover:bg-cyber-red/20 text-cyber-red font-medium py-2.5 px-4 rounded-lg text-sm transition-all">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+
+            <div id="key-status-msg" class="hidden text-xs font-mono rounded-lg px-3 py-2"></div>
+
+            <!-- Help -->
+            <div class="bg-cyber-800/50 border border-cyber-700/50 rounded-lg p-4 space-y-2">
+              <div class="text-xs text-gray-300 font-semibold">How to get a free API key:</div>
+              <ol class="text-xs text-gray-400 space-y-1 list-decimal list-inside">
+                <li>Visit <span class="text-cyber-accent font-mono">huggingface.co</span> and create a free account</li>
+                <li>Go to Settings → Access Tokens</li>
+                <li>Click "New token" → select "Read" role</li>
+                <li>Copy the token (starts with <span class="font-mono">hf_</span>) and paste above</li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- Application Settings -->
+          <div class="bg-cyber-900 border border-cyber-800 rounded-xl p-6 space-y-5">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-cyber-accent"></i>
+              <h2 class="text-white font-semibold">Application Settings</h2>
+            </div>
+
+            <!-- Thresholds -->
+            <div class="space-y-4">
+              <div class="text-xs text-gray-400 font-mono uppercase tracking-wider">Threat Thresholds</div>
+
+              <div>
+                <div class="flex justify-between text-sm mb-1.5">
+                  <label class="text-gray-300">Danger Threshold</label>
+                  <span class="text-cyber-red font-mono text-xs" id="danger-threshold-val">70%</span>
+                </div>
+                <input type="range" id="danger-threshold" min="30" max="95" value="70" step="5"
+                  class="w-full accent-red-500 cursor-pointer" />
+              </div>
+
+              <div>
+                <div class="flex justify-between text-sm mb-1.5">
+                  <label class="text-gray-300">Warning Threshold</label>
+                  <span class="text-cyber-yellow font-mono text-xs" id="warning-threshold-val">40%</span>
+                </div>
+                <input type="range" id="warning-threshold" min="10" max="80" value="40" step="5"
+                  class="w-full accent-yellow-500 cursor-pointer" />
+              </div>
+            </div>
+
+            <hr class="border-cyber-800" />
+
+            <!-- Feature Toggles -->
+            <div class="space-y-3">
+              <div class="text-xs text-gray-400 font-mono uppercase tracking-wider">Features</div>
+
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm text-gray-300">Auto-save to Incident Log</span>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="toggle-autosave" checked class="sr-only" />
+                  <div class="toggle-track"></div>
+                </div>
+              </label>
+
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm text-gray-300">Desktop Notifications</span>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="toggle-notifications" class="sr-only" />
+                  <div class="toggle-track"></div>
+                </div>
+              </label>
+
+              <label class="flex items-center justify-between cursor-pointer">
+                <span class="text-sm text-gray-300">Scan animation effects</span>
+                <div class="toggle-switch">
+                  <input type="checkbox" id="toggle-scanline" checked class="sr-only" />
+                  <div class="toggle-track"></div>
+                </div>
+              </label>
+            </div>
+
+            <hr class="border-cyber-800" />
+
+            <!-- Data Management -->
+            <div class="space-y-3">
+              <div class="text-xs text-gray-400 font-mono uppercase tracking-wider">Data Management</div>
+              <div class="grid grid-cols-2 gap-3">
+                <button id="export-all-btn"
+                  class="text-sm bg-cyber-800 border border-cyber-700 hover:border-cyber-accent/40 text-gray-300 hover:text-cyber-accent py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-download text-xs"></i> Export All
+                </button>
+                <button id="purge-all-btn"
+                  class="text-sm bg-cyber-red/10 border border-cyber-red/30 hover:bg-cyber-red/20 text-cyber-red py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-fire text-xs"></i> Purge All
+                </button>
+              </div>
+              <p class="text-xs text-gray-600">LocalStorage used: <span id="storage-used" class="font-mono text-gray-400">0 KB</span></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- end views container -->
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       GLOBAL TOAST NOTIFICATIONS
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- Scan Line Overlay -->
+  <div id="scanline-overlay" class="scanline-overlay pointer-events-none"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
